@@ -1,0 +1,103 @@
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+
+# 假设constants是一个包含各种运输方式常量的列表
+# 每个常量元组的形式为(Si, psi_i, phi_i, Ri, Ti, Di, Vi, Ei)
+
+# 定义函数2，计算每种运输方式的函数值
+def function2(constants, alpha, beta, i):
+    Si, psi_i, phi_i, Ri, Ti, Di, Vi, Ei = constants[i]
+    return -(1 - Si) * (psi_i + phi_i) * Ri * (alpha * (Ti + Di / Vi) + beta * Ei * Di)
+
+
+# 定义函数1，计算所有运输方式的函数2值的加权和的对数
+def function1(constants, alpha, beta, j):
+    function2_values = [function2(constants, alpha, beta, i) for i in range(j)]
+    # 为了避免数值不稳定，使用np.finfo(float).eps代替一个固定的epsilon
+    min_value = np.finfo(float).eps + np.min(function2_values)
+    Pi = [math.exp(val / min_value) / np.sum([math.exp(v / min_value) for v in function2_values])
+          for val in function2_values]
+    # 返回对数似然函数的负值作为目标函数（最小化负对数似然等价于最大化似然）
+    return -np.sum(np.log(Pi))
+
+
+# 定义目标函数梯度
+def gradient(constants, alpha, beta, j):
+    grad_alpha = 0
+    grad_beta = 0
+    function2_values = [function2(constants, alpha, beta, i) for i in range(j)]
+    # 为了避免数值不稳定，使用np.finfo(float).eps代替一个固定的epsilon
+    min_value = np.finfo(float).eps + np.min(function2_values)
+    Pi = [math.exp(val / min_value) / np.sum([math.exp(v / min_value) for v in function2_values])
+          for val in function2_values]
+    norm_factor = np.sum(Pi)
+    for i in range(j):
+        f2 = function2_values[i]
+        grad_alpha += -Pi[i] * (1 - constants[i][0]) * (constants[i][2] + constants[i][3]) * constants[i][4] * (
+                    constants[i][4] + constants[i][5] / constants[i][6])
+        grad_beta += -Pi[i] * (1 - constants[i][0]) * (constants[i][2] + constants[i][3]) * constants[i][4] * \
+                     constants[i][7] * constants[i][5]
+    grad_alpha /= norm_factor
+    grad_beta /= norm_factor
+    return np.array([grad_alpha, grad_beta])
+
+
+# 梯度下降法
+def gradient_descent(constants, initial_params, learning_rate, iterations):
+    alpha, beta = initial_params
+    params_history = [(alpha, beta)]
+    for _ in range(iterations):
+        grad = gradient(constants, alpha, beta, len(constants))
+        alpha -= learning_rate * grad[0]
+        beta -= learning_rate * grad[1]
+        params_history.append((alpha, beta))
+    return params_history
+
+
+# 示例使用  (Si货损率, psi_i业务办理时间相对值, phi_i服务站点数量的相对值,
+# Ri准点率, Ti附加时间, Di运输距离, Vi速度, Ei单位运价率)
+constants = [(0.026, 0.4, 0.5, 0.7794, 20, 1, 75, 0.64), (0, 0.35, 0.2, 0.8836, 30, 1, 900, 3.23), (0, 0.25, 0.3, 0.985, 30, 1, 250, 2.81)]
+j = 3  # j的值表示我们考虑constants列表中的前j个元素
+initial_params = (1.0, 1.0)  # 初始alpha和beta值
+learning_rate = 0.01  # 学习率
+iterations = 1000  # 迭代次数
+
+# 执行梯度下降法，获取参数历史
+params_history = gradient_descent(constants[:j], initial_params, learning_rate, iterations)
+
+# 输出标定后的参数
+calibrated_params = params_history[-1]
+alpha, beta = calibrated_params
+print("Calibrated alpha:", alpha)
+print("Calibrated beta:", beta)
+
+# 提取alpha和beta的历史
+alpha_history = [params[0] for params in params_history]
+beta_history = [params[1] for params in params_history]
+
+# 确保x轴（迭代次数）和y轴（alpha和beta值）有相同的长度
+assert len(alpha_history) == len(beta_history), "Alpha and beta history must have the same length"
+
+# 绘制图像
+plt.figure(figsize=(12, 6))
+
+# 绘制alpha随迭代次数的变化
+plt.subplot(1, 2, 1)
+plt.plot(range(len(alpha_history)), alpha_history, label='Alpha')
+plt.xlabel('Iteration')
+plt.ylabel('Value')
+plt.title('Alpha vs Iteration')
+plt.legend()
+
+# 绘制beta随迭代次数的变化
+plt.subplot(1, 2, 2)
+plt.plot(range(len(beta_history)), beta_history, label='Beta')
+plt.xlabel('Iteration')
+plt.ylabel('Value')
+plt.title('Beta vs Iteration')
+plt.legend()
+
+# 显示图像
+plt.tight_layout()
+plt.show()
